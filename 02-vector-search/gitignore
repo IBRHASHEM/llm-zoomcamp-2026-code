@@ -1,0 +1,6 @@
+.venv
+.env
+*.db*
+_pycche_/
+models/
+*.ipynb_checkpints

@@ -1,21 +1,30 @@
 import time
 
+from google.genai import types
 from tqdm.auto import tqdm
 from rag_helper import RAGBase
 
+DEFAULT_MODEL = "gemini-2.5-flash"
+
+# أسعار Gemini 2.5 Flash (يمكن تعديلها عند تغيير النموذج)
+INPUT_PRICE_PER_MILLION = 0.75
+OUTPUT_PRICE_PER_MILLION = 4.50
+
 
 def calc_price(usage):
-    input_price_per_million = 0.75
-    output_price_per_million = 4.50
+    input_tokens = usage.prompt_token_count or 0
+    output_tokens = usage.candidates_token_count or 0
 
-    input_cost = (usage.input_tokens / 1_000_000) * input_price_per_million
-    output_cost = (usage.output_tokens / 1_000_000) * output_price_per_million
-    total_cost = input_cost + output_cost
+    input_cost = (input_tokens / 1_000_000) * INPUT_PRICE_PER_MILLION
+    output_cost = (output_tokens / 1_000_000) * OUTPUT_PRICE_PER_MILLION
 
     return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": usage.total_token_count,
         "input_cost": input_cost,
         "output_cost": output_cost,
-        "total_cost": total_cost,
+        "total_cost": input_cost + output_cost,
     }
 
 
@@ -24,24 +33,37 @@ def calc_total_price(usages):
 
     for usage in usages:
         cost = calc_price(usage)
-        total_cost = total_cost + cost["total_cost"]
+        total_cost += cost["total_cost"]
 
     return total_cost
 
 
-def llm_structured(client, instructions, user_prompt, output_type, model="gpt-5.4-mini"):
-    messages = [
-        {"role": "developer", "content": instructions},
-        {"role": "user", "content": user_prompt}
-    ]
+def llm_structured(
+    client,
+    instructions,
+    user_prompt,
+    output_type,
+    model=DEFAULT_MODEL,
+):
 
-    response = client.responses.parse(
+    response = client.models.generate_content(
         model=model,
-        input=messages,
-        text_format=output_type
+        contents=user_prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=instructions,
+            response_mime_type="application/json",
+            response_schema=output_type,
+        ),
     )
 
-    return response.output_parsed, response.usage
+    parsed = getattr(response, "parsed", None)
+
+    if parsed is not None:
+        result = parsed
+    else:
+        result = output_type.model_validate_json(response.text)
+
+    return result, response.usage_metadata
 
 
 def llm_structured_retry(
@@ -49,16 +71,16 @@ def llm_structured_retry(
     instructions,
     user_prompt,
     output_type,
-    model="gpt-5.4-mini",
+    model=DEFAULT_MODEL,
     max_retries=3,
 ):
     for attempt in range(max_retries):
         try:
             return llm_structured(
-                client,
-                instructions,
-                user_prompt,
-                output_type,
+                client=client,
+                instructions=instructions,
+                user_prompt=user_prompt,
+                output_type=output_type,
                 model=model,
             )
         except Exception:
@@ -79,31 +101,37 @@ class RAGWithUsage(RAGBase):
         self.last_usage = None
 
     def search(self, query, num_results=5):
-        boost_dict = {"question": 1.0, "answer": 2.0, "section": 0.1}
-        filter_dict = {"course": self.course}
+        boost_dict = {
+            "question": 1.0,
+            "answer": 2.0,
+            "section": 0.1,
+        }
+
+        filter_dict = {
+            "course": self.course,
+        }
 
         return self.index.search(
             query,
             num_results=num_results,
             boost_dict=boost_dict,
-            filter_dict=filter_dict
+            filter_dict=filter_dict,
         )
 
     def llm(self, prompt):
-        input_messages = [
-            {"role": "developer", "content": self.instructions},
-            {"role": "user", "content": prompt}
-        ]
 
-        response = self.llm_client.responses.create(
+        response = self.llm_client.models.generate_content(
             model=self.model,
-            input=input_messages
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=self.instructions,
+            ),
         )
 
-        self.last_usage = response.usage
-        self.usages.append(response.usage)
+        self.last_usage = response.usage_metadata
+        self.usages.append(response.usage_metadata)
 
-        return response.output_text
+        return response.text
 
     def total_cost(self):
         return calc_total_price(self.usages)

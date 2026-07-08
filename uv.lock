@@ -919,8 +919,10 @@ dependencies = [
     { name = "jupyter" },
     { name = "minsearch" },
     { name = "openai" },
+    { name = "pandas" },
     { name = "python-dotenv" },
     { name = "requests" },
+    { name = "tqdm" },
 ]
 
 [package.metadata]
@@ -928,8 +930,10 @@ requires-dist = [
     { name = "jupyter", specifier = ">=1.1.1" },
     { name = "minsearch", specifier = ">=0.1.1" },
     { name = "openai", specifier = ">=2.43.0" },
+    { name = "pandas", specifier = ">=3.0.3" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "requests", specifier = ">=2.34.2" },
+    { name = "tqdm", specifier = ">=4.68.3" },
 ]
 
 [[package]]

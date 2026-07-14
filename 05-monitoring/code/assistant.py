@@ -1,22 +1,22 @@
 import sys
+import os
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from google import genai
 
 from ingest import load_faq_data, build_index
 from metrics import RAGWithMetrics
 from db_save import save_conversation
-
-
 def create_assistant():
     load_dotenv()
-
     documents = load_faq_data()
     index = build_index(documents)
-
+    client = genai.Client(
+        api_key=os.getenv("GEMINI_API_KEY")
+    )
     return RAGWithMetrics(
         index=index,
-        llm_client=OpenAI()
+        llm_client=client
     )
 
 if __name__ == "__main__":
@@ -29,4 +29,8 @@ if __name__ == "__main__":
     answer = assistant.rag(query)
     print(answer)
 
-    save_conversation(assistant.last_call, query, "llm-zoomcamp")
+    save_conversation(
+        assistant.last_call,
+        query,
+        "llm-zoomcamp"
+    )

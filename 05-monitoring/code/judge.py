@@ -2,7 +2,7 @@ import json
 
 from pydantic import BaseModel
 from typing import Literal
-from openai import OpenAI
+from google import genai
 from dotenv import load_dotenv
 
 from evaluation_utils import llm_structured_retry
@@ -31,7 +31,9 @@ Generated Answer: {answer}
 
 def evaluate_relevance(question, answer, client=None):
     if client is None:
-        client = OpenAI()
+        client = genai.Client(
+        api_key=os.getenv("GEMINI_API_KEY")
+    )
 
     prompt = judge_prompt.format(
         question=question,
